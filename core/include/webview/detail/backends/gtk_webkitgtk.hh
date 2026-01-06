@@ -220,6 +220,74 @@ protected:
     return {};
   }
 
+  noresult set_pixel_transparency_impl(bool transparent) override {
+    m_transparent = transparent;
+    if (m_window) {
+      GtkStyleContext *context = gtk_widget_get_style_context(m_window);
+      if (transparent) {
+        gtk_style_context_add_class(context, "transparent");
+      } else {
+        gtk_style_context_remove_class(context, "transparent");
+      }
+
+#if GTK_MAJOR_VERSION >= 4
+      if (m_webview) {
+        GdkRGBA rgba;
+        if (transparent) {
+          rgba = {0, 0, 0, 0};
+        } else {
+          rgba = {1, 1, 1, 1};
+        }
+        webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(m_webview), &rgba);
+      }
+#else
+      // GTK3: Enable visual transparency
+      if (transparent) {
+        // Visual must be set before window is realized (usually done in
+        // window_init)
+        gtk_widget_set_app_paintable(m_window, TRUE);
+        if (m_webview) {
+          GdkRGBA rgba = {0, 0, 0, 0};
+          webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(m_webview),
+                                               &rgba);
+        }
+      } else {
+        gtk_widget_set_app_paintable(m_window, FALSE);
+        if (m_webview) {
+          GdkRGBA rgba = {1, 1, 1, 1};
+          webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(m_webview),
+                                               &rgba);
+        }
+      }
+#endif
+      gtk_widget_queue_draw(m_window);
+    }
+    return {};
+  }
+
+  noresult set_click_through_impl(bool click_through) override {
+#if GTK_MAJOR_VERSION >= 4
+    // GTK4: Set input region to empty for click-through
+    if (click_through) {
+      gtk_widget_set_can_target(m_window, FALSE);
+    } else {
+      gtk_widget_set_can_target(m_window, TRUE);
+    }
+#else
+    // GTK3: Use input shape to make window click-through
+    if (click_through) {
+      // Create an empty region for input
+      cairo_region_t *region = cairo_region_create();
+      gtk_widget_input_shape_combine_region(m_window, region);
+      cairo_region_destroy(region);
+    } else {
+      // Reset to default input shape
+      gtk_widget_input_shape_combine_region(m_window, nullptr);
+    }
+#endif
+    return {};
+  }
+
   noresult eval_impl(const std::string &js) override {
     // URI is null before content has begun loading.
     if (!webkit_web_view_get_uri(WEBKIT_WEB_VIEW(m_webview))) {
@@ -293,6 +361,17 @@ private:
         throw exception{WEBVIEW_ERROR_UNSPECIFIED, "GTK init failed"};
       }
       m_window = gtk_compat::window_new();
+
+#if GTK_MAJOR_VERSION < 4
+      // Set RGBA visual for transparency support (must be done before window is
+      // realized)
+      GdkScreen *screen = gtk_widget_get_screen(m_window);
+      GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
+      if (visual) {
+        gtk_widget_set_visual(m_window, visual);
+      }
+#endif
+
       on_window_created();
       auto on_window_destroy = +[](GtkWidget *, gpointer arg) {
         auto *w = static_cast<gtk_webkit_engine *>(arg);
@@ -301,11 +380,48 @@ private:
       };
       g_signal_connect(G_OBJECT(m_window), "destroy",
                        G_CALLBACK(on_window_destroy), this);
+
+      // Add CSS provider for transparency class
+      GtkCssProvider *provider = gtk_css_provider_new();
+#if GTK_MAJOR_VERSION >= 4
+      gtk_css_provider_load_from_data(
+          provider,
+          ".transparent { background: none; background-color: transparent; }",
+          -1);
+#else
+      gtk_css_provider_load_from_data(
+          provider,
+          ".transparent { background: none; background-color: transparent; }",
+          -1, nullptr);
+      // Connect to draw signal to clear background for GTK3
+      g_signal_connect(
+          G_OBJECT(m_window), "draw",
+          G_CALLBACK(+[](GtkWidget *, cairo_t *cr, gpointer arg) -> gboolean {
+            auto *w = static_cast<gtk_webkit_engine *>(arg);
+            if (w->m_transparent) {
+              cairo_set_source_rgba(cr, 0, 0, 0, 0);
+              cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+              cairo_paint(cr);
+            }
+            return FALSE; // Continue to child widgets
+          }),
+          this);
+#endif
+      gtk_style_context_add_provider(gtk_widget_get_style_context(m_window),
+                                     GTK_STYLE_PROVIDER(provider),
+                                     GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+      g_object_unref(provider);
     }
     webkit_dmabuf::apply_webkit_dmabuf_workaround();
     // Initialize webview widget
     m_webview = webkit_web_view_new();
     g_object_ref_sink(m_webview);
+
+    // Apply transparency if it was set before webview creation
+    if (m_transparent) {
+      GdkRGBA rgba = {0, 0, 0, 0};
+      webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(m_webview), &rgba);
+    }
     WebKitUserContentManager *manager = m_user_content_manager =
         webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(m_webview));
     webkitgtk_compat::connect_script_message_received(
@@ -353,8 +469,10 @@ private:
   }
 
   result<int> pump_msgloop_impl(int block) override {
-    if (!m_window) return 0;
-    if (m_stop_run_loop) return 0;
+    if (!m_window)
+      return 0;
+    if (m_stop_run_loop)
+      return 0;
 
     g_main_context_iteration(nullptr, block);
     return 1;
@@ -365,6 +483,7 @@ private:
   WebKitUserContentManager *m_user_content_manager{};
   bool m_stop_run_loop{};
   bool m_is_window_shown{};
+  bool m_transparent{};
 };
 
 } // namespace detail

@@ -131,6 +131,61 @@ public:
   static void widget_set_opacity(GtkWidget *widget, double opacity) {
     gtk_widget_set_opacity(widget, opacity);
   }
+
+  static void window_set_keep_above(GtkWindow *window, gboolean setting) {
+#if GTK_MAJOR_VERSION < 4
+    gtk_window_set_keep_above(window, setting);
+#else
+    // GTK 4 does not have a direct equivalent to gtk_window_set_keep_above.
+    // It's considered a window manager hint that is not supported by the GTK 4 API.
+    (void)window;
+    (void)setting;
+#endif
+  }
+
+  static void widget_add_css_class(GtkWidget *widget, const char *class_name) {
+#if GTK_MAJOR_VERSION >= 4
+    gtk_widget_add_css_class(widget, class_name);
+#else
+    GtkStyleContext *context = gtk_widget_get_style_context(widget);
+    gtk_style_context_add_class(context, class_name);
+#endif
+  }
+
+  static void widget_remove_css_class(GtkWidget *widget,
+                                      const char *class_name) {
+#if GTK_MAJOR_VERSION >= 4
+    gtk_widget_remove_css_class(widget, class_name);
+#else
+    GtkStyleContext *context = gtk_widget_get_style_context(widget);
+    gtk_style_context_remove_class(context, class_name);
+#endif
+  }
+
+  static void css_provider_load_from_data(GtkCssProvider *provider,
+                                          const char *data, gssize length) {
+#if GTK_MAJOR_VERSION >= 4
+    gtk_css_provider_load_from_string(provider, data);
+    (void)length;
+#else
+    gtk_css_provider_load_from_data(provider, data, length, nullptr);
+#endif
+  }
+
+  static void widget_add_style_provider(GtkWidget *widget,
+                                        GtkStyleProvider *provider,
+                                        guint priority) {
+#if GTK_MAJOR_VERSION >= 4
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    GtkStyleContext *context = gtk_widget_get_style_context(widget);
+    gtk_style_context_add_provider(context, provider, priority);
+#pragma GCC diagnostic pop
+#else
+    GtkStyleContext *context = gtk_widget_get_style_context(widget);
+    gtk_style_context_add_provider(context, provider, priority);
+#endif
+  }
 };
 
 } // namespace detail

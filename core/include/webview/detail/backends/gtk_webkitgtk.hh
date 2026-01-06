@@ -210,7 +210,7 @@ protected:
   }
 
   noresult set_always_on_top_impl(bool always_on_top) override {
-    gtk_window_set_keep_above(GTK_WINDOW(m_window), always_on_top);
+    gtk_compat::window_set_keep_above(GTK_WINDOW(m_window), always_on_top);
     return {};
   }
 
@@ -222,11 +222,10 @@ protected:
   noresult set_pixel_transparency_impl(bool transparent) override {
     m_transparent = transparent;
     if (m_window) {
-      GtkStyleContext *context = gtk_widget_get_style_context(m_window);
       if (transparent) {
-        gtk_style_context_add_class(context, "transparent");
+        gtk_compat::widget_add_css_class(m_window, "transparent");
       } else {
-        gtk_style_context_remove_class(context, "transparent");
+        gtk_compat::widget_remove_css_class(m_window, "transparent");
       }
 
 #if GTK_MAJOR_VERSION >= 4
@@ -382,16 +381,11 @@ private:
 
       // Add CSS provider for transparency class
       GtkCssProvider *provider = gtk_css_provider_new();
-#if GTK_MAJOR_VERSION >= 4
-      gtk_css_provider_load_from_data(
+      gtk_compat::css_provider_load_from_data(
           provider,
           ".transparent { background: none; background-color: transparent; }",
           -1);
-#else
-      gtk_css_provider_load_from_data(
-          provider,
-          ".transparent { background: none; background-color: transparent; }",
-          -1, nullptr);
+#if GTK_MAJOR_VERSION < 4
       // Connect to draw signal to clear background for GTK3
       g_signal_connect(
           G_OBJECT(m_window), "draw",
@@ -406,9 +400,9 @@ private:
           }),
           this);
 #endif
-      gtk_style_context_add_provider(gtk_widget_get_style_context(m_window),
-                                     GTK_STYLE_PROVIDER(provider),
-                                     GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+      gtk_compat::widget_add_style_provider(
+          m_window, GTK_STYLE_PROVIDER(provider),
+          GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
       g_object_unref(provider);
     }
     webkit_dmabuf::apply_webkit_dmabuf_workaround();

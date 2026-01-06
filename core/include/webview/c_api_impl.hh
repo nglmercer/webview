@@ -250,6 +250,44 @@ WEBVIEW_API webview_error_t webview_return(webview_t w, const char *id,
       [=] { return cast_to_webview(w)->resolve(id, status, result); });
 }
 
+WEBVIEW_API webview_error_t webview_set_opacity(webview_t w, double opacity) {
+  using namespace webview::detail;
+  return api_filter([=] { return cast_to_webview(w)->set_opacity(opacity); });
+}
+
+WEBVIEW_API webview_error_t webview_set_pixel_transparency(webview_t w,
+                                                          int transparent) {
+  using namespace webview::detail;
+  return api_filter([=] {
+    return cast_to_webview(w)->set_pixel_transparency(
+        static_cast<bool>(transparent));
+  });
+}
+
+WEBVIEW_API webview_error_t webview_set_click_through(webview_t w,
+                                                     int click_through) {
+  using namespace webview::detail;
+  return api_filter([=] {
+    return cast_to_webview(w)->set_click_through(
+        static_cast<bool>(click_through));
+  });
+}
+
+WEBVIEW_API webview_error_t webview_set_always_on_top(webview_t w,
+                                                     int always_on_top) {
+  using namespace webview::detail;
+  return api_filter([=] {
+    return cast_to_webview(w)->set_always_on_top(
+        static_cast<bool>(always_on_top));
+  });
+}
+
+WEBVIEW_API webview_error_t webview_set_frame(webview_t w, int frame) {
+  using namespace webview::detail;
+  return api_filter(
+      [=] { return cast_to_webview(w)->set_frame(static_cast<bool>(frame)); });
+}
+
 WEBVIEW_API const webview_version_info_t *webview_version(void) {
   return &webview::detail::library_version_info;
 }

@@ -251,6 +251,49 @@ WEBVIEW_API webview_error_t webview_return(webview_t w, const char *id,
                                            int status, const char *result);
 
 /**
+ * Updates the opacity of the native window.
+ *
+ * @param w The webview instance.
+ * @param opacity The new opacity (0.0 to 1.0).
+ */
+WEBVIEW_API webview_error_t webview_set_opacity(webview_t w, double opacity);
+
+/**
+ * Updates the transparency of the native window.
+ *
+ * @param w The webview instance.
+ * @param transparent Whether the window should be transparent.
+ */
+WEBVIEW_API webview_error_t webview_set_pixel_transparency(webview_t w,
+                                                          int transparent);
+
+/**
+ * Updates the click-through property of the native window.
+ *
+ * @param w The webview instance.
+ * @param click_through Whether the window should be click-through.
+ */
+WEBVIEW_API webview_error_t webview_set_click_through(webview_t w,
+                                                      int click_through);
+
+/**
+ * Updates the always-on-top property of the native window.
+ *
+ * @param w The webview instance.
+ * @param always_on_top Whether the window should be always on top.
+ */
+WEBVIEW_API webview_error_t webview_set_always_on_top(webview_t w,
+                                                      int always_on_top);
+
+/**
+ * Updates the frame property of the native window.
+ *
+ * @param w The webview instance.
+ * @param frame Whether the window should have a frame.
+ */
+WEBVIEW_API webview_error_t webview_set_frame(webview_t w, int frame);
+
+/**
  * Get the library's version information.
  *
  * @since 0.10

@@ -232,6 +232,19 @@ protected:
                              nullptr);
     return {};
   }
+
+  noresult set_opacity_impl(double opacity) override {
+    objc::autoreleasepool arp;
+    NSWindow_setAlphaValue(m_window, opacity);
+    return {};
+  }
+
+  noresult set_always_on_top_impl(bool always_on_top) override {
+    objc::autoreleasepool arp;
+    NSWindow_setLevel(m_window, always_on_top ? 3 /* NSStatusWindowLevel */
+                                              : 0 /* NSNormalWindowLevel */);
+    return {};
+  }
   noresult eval_impl(const std::string &js) override {
     objc::autoreleasepool arp;
     // URI is null before content has begun loading.

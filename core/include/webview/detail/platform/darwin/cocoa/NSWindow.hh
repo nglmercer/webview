@@ -128,6 +128,14 @@ inline void NSWindow_set_contentMaxSize(id self, NSSize size) {
   objc::msg_send<void>(self, objc::selector("setContentMaxSize:"), size);
 }
 
+inline void NSWindow_setAlphaValue(id self, double alpha) {
+  objc::msg_send<void>(self, objc::selector("setAlphaValue:"), alpha);
+}
+
+inline void NSWindow_setLevel(id self, NSInteger level) {
+  objc::msg_send<void>(self, objc::selector("setLevel:"), level);
+}
+
 } // namespace cocoa
 } // namespace detail
 } // namespace webview

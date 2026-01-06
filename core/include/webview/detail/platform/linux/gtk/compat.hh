@@ -127,6 +127,10 @@ public:
     (void)height;
 #endif
   }
+
+  static void widget_set_opacity(GtkWidget *widget, double opacity) {
+    gtk_widget_set_opacity(widget, opacity);
+  }
 };
 
 } // namespace detail

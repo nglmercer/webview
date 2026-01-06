@@ -55,7 +55,6 @@
 
 #include <functional>
 #include <list>
-#include <memory>
 #include <string>
 
 #include <gtk/gtk.h>
@@ -469,10 +468,12 @@ private:
   }
 
   result<int> pump_msgloop_impl(int block) override {
-    if (!m_window)
+    if (!m_window) {
       return 0;
-    if (m_stop_run_loop)
+    }
+    if (m_stop_run_loop) {
       return 0;
+    }
 
     g_main_context_iteration(nullptr, block);
     return 1;

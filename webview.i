@@ -24,3 +24,8 @@ extern void webview_bind(webview_t w, const char *name, void (*fn)(const char *s
 extern void webview_unbind(webview_t w, const char *name);
 extern void webview_return(webview_t w, const char *seq, int status, const char *result);
 extern int webview_pump_msgloop(webview_t w, int block);
+extern void webview_set_opacity(webview_t w, double opacity);
+extern void webview_set_pixel_transparency(webview_t w, int transparent);
+extern void webview_set_click_through(webview_t w, int click_through);
+extern void webview_set_always_on_top(webview_t w, int always_on_top);
+extern void webview_set_frame(webview_t w, int frame);

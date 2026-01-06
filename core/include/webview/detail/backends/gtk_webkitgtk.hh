@@ -205,6 +205,21 @@ protected:
     return {};
   }
 
+  noresult set_opacity_impl(double opacity) override {
+    gtk_compat::widget_set_opacity(m_window, opacity);
+    return {};
+  }
+
+  noresult set_always_on_top_impl(bool always_on_top) override {
+    gtk_window_set_keep_above(GTK_WINDOW(m_window), always_on_top);
+    return {};
+  }
+
+  noresult set_frame_impl(bool frame) override {
+    gtk_window_set_decorated(GTK_WINDOW(m_window), frame);
+    return {};
+  }
+
   noresult eval_impl(const std::string &js) override {
     // URI is null before content has begun loading.
     if (!webkit_web_view_get_uri(WEBKIT_WEB_VIEW(m_webview))) {

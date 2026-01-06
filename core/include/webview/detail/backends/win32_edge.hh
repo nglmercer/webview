@@ -78,7 +78,10 @@
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "version.lib")
+#pragma comment(lib, "dwmapi.lib")
 #endif
+
+#include <dwmapi.h>
 
 namespace webview {
 namespace detail {
@@ -460,6 +463,101 @@ protected:
     return {};
   }
 
+  noresult set_opacity_impl(double opacity) override {
+    m_opacity = opacity;
+    update_window_layered();
+    return {};
+  }
+
+  noresult set_pixel_transparency_impl(bool transparent) override {
+    m_pixel_transparency = transparent;
+    update_window_layered();
+    return {};
+  }
+
+  void update_window_layered() {
+    auto style = GetWindowLongPtr(m_window, GWL_EXSTYLE);
+
+    bool need_layered = (m_opacity < 1.0) || m_pixel_transparency || m_click_through;
+
+    if (need_layered) {
+      style |= WS_EX_LAYERED;
+    } else {
+      style &= ~WS_EX_LAYERED;
+    }
+
+    if (m_click_through) {
+      style |= WS_EX_TRANSPARENT;
+    } else {
+      style &= ~WS_EX_TRANSPARENT;
+    }
+
+    SetWindowLongPtr(m_window, GWL_EXSTYLE, style);
+
+    if (need_layered) {
+      // Use LWA_ALPHA for overall opacity. 
+      // For per-pixel transparency, DWM with margins={-1} and black background 
+      // handles click-through on 0-alpha pixels naturally on Windows 10+.
+      SetLayeredWindowAttributes(m_window, 0, (BYTE)(m_opacity * 255), LWA_ALPHA);
+    }
+
+    if (m_pixel_transparency) {
+      MARGINS margins = {-1};
+      DwmExtendFrameIntoClientArea(m_window, &margins);
+    } else {
+      MARGINS margins = {0, 0, 0, 0};
+      DwmExtendFrameIntoClientArea(m_window, &margins);
+    }
+
+    if (m_controller) {
+      ICoreWebView2Controller2 *controller2 = nullptr;
+      auto res = m_controller->QueryInterface(
+          IID_ICoreWebView2Controller2,
+          reinterpret_cast<void **>(&controller2));
+      if (SUCCEEDED(res) && controller2) {
+        COREWEBVIEW2_COLOR color = {0, 0, 0, 0}; // Transparent
+        if (!m_pixel_transparency) {
+          color = {255, 255, 255, 255}; // Opaque white
+        }
+        controller2->put_DefaultBackgroundColor(color);
+        controller2->Release();
+      }
+    }
+
+    SetWindowPos(m_window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
+    resize_webview();
+    RedrawWindow(m_window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+  }
+
+  noresult set_click_through_impl(bool click_through) override {
+    m_click_through = click_through;
+    update_window_layered();
+    return {};
+  }
+
+  noresult set_always_on_top_impl(bool always_on_top) override {
+    SetWindowPos(m_window, always_on_top ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0,
+                 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    return {};
+  }
+
+  noresult set_frame_impl(bool frame) override {
+    auto style = GetWindowLongPtr(m_window, GWL_STYLE);
+    if (frame) {
+      style &= ~WS_POPUP;
+      style |= WS_OVERLAPPEDWINDOW;
+    } else {
+      style &= ~WS_OVERLAPPEDWINDOW;
+      style |= WS_POPUP;
+    }
+    SetWindowLongPtr(m_window, GWL_STYLE, style);
+    SetWindowPos(m_window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    return {};
+  }
+
   user_script add_user_script_impl(const std::string &js) override {
     auto wjs = widen_string(js);
     std::wstring script_id;
@@ -600,6 +698,21 @@ private:
             w->focus_webview();
           }
           break;
+        case WM_NCHITTEST: {
+          LRESULT hit = DefWindowProcW(hwnd, msg, wp, lp);
+          if (w->m_pixel_transparency && hit == HTNOWHERE) {
+            return HTCLIENT;
+          }
+          return hit;
+        }
+        case WM_ERASEBKGND:
+          if (w->m_pixel_transparency) {
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            FillRect((HDC)wp, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+            return 1;
+          }
+          return DefWindowProcW(hwnd, msg, wp, lp);
         default:
           return DefWindowProcW(hwnd, msg, wp, lp);
         }
@@ -654,6 +767,16 @@ private:
           SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         }
         break;
+      case WM_NCHITTEST:
+        return HTCLIENT;
+      case WM_ERASEBKGND:
+        if (w->m_pixel_transparency) {
+          RECT rc;
+          GetClientRect(hwnd, &rc);
+          FillRect((HDC)wp, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+          return 1;
+        }
+        return DefWindowProcW(hwnd, msg, wp, lp);
       default:
         return DefWindowProcW(hwnd, msg, wp, lp);
       }
@@ -803,6 +926,7 @@ private:
 }");
     resize_webview();
     m_controller->put_IsVisible(TRUE);
+    update_window_layered();
     ShowWindow(m_widget, SW_SHOW);
     UpdateWindow(m_widget);
     if (owns_window()) {
@@ -919,6 +1043,9 @@ private:
   mswebview2::loader m_webview2_loader;
   int m_dpi{};
   bool m_is_window_shown{};
+  bool m_pixel_transparency = false;
+  double m_opacity = 1.0;
+  bool m_click_through = false;
 };
 
 } // namespace detail

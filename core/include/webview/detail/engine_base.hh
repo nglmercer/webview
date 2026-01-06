@@ -153,6 +153,18 @@ window.__webview__.onUnbind(" +
 
   noresult eval(const std::string &js) { return eval_impl(js); }
 
+  noresult set_opacity(double opacity) { return set_opacity_impl(opacity); }
+  noresult set_pixel_transparency(bool transparent) {
+    return set_pixel_transparency_impl(transparent);
+  }
+  noresult set_click_through(bool click_through) {
+    return set_click_through_impl(click_through);
+  }
+  noresult set_always_on_top(bool always_on_top) {
+    return set_always_on_top_impl(always_on_top);
+  }
+  noresult set_frame(bool frame) { return set_frame_impl(frame); }
+
 protected:
   virtual noresult navigate_impl(const std::string &url) = 0;
   virtual result<void *> window_impl() = 0;
@@ -167,6 +179,14 @@ protected:
                                  webview_hint_t hints) = 0;
   virtual noresult set_html_impl(const std::string &html) = 0;
   virtual noresult eval_impl(const std::string &js) = 0;
+
+  virtual noresult set_opacity_impl(double /*opacity*/) { return {}; }
+  virtual noresult set_pixel_transparency_impl(bool /*transparent*/) {
+    return {};
+  }
+  virtual noresult set_click_through_impl(bool /*click_through*/) { return {}; }
+  virtual noresult set_always_on_top_impl(bool /*always_on_top*/) { return {}; }
+  virtual noresult set_frame_impl(bool /*frame*/) { return {}; }
 
   virtual user_script *add_user_script(const std::string &js) {
     return std::addressof(*m_user_scripts.emplace(m_user_scripts.end(),

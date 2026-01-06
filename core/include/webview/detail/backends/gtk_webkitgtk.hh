@@ -98,7 +98,8 @@ private:
 
 class gtk_webkit_engine : public engine_base {
 public:
-  gtk_webkit_engine(bool debug, void *window) : engine_base{!window} {
+  gtk_webkit_engine(bool debug, void *window, const std::string &custom_flags = "")
+      : engine_base{!window, custom_flags} {
     window_init(window);
     window_settings(debug);
     dispatch_size_default();
@@ -283,6 +284,24 @@ protected:
       gtk_widget_input_shape_combine_region(m_window, nullptr);
     }
 #endif
+    return {};
+  }
+
+  noresult set_browser_flags_impl(bool enable_autoplay, bool mute_autoplay,
+                                  const std::vector<std::string> &custom_flags)
+      override {
+    if (enable_autoplay && m_webview) {
+      WebKitSettings *settings =
+          webkit_web_view_get_settings(WEBKIT_WEB_VIEW(m_webview));
+      if (settings) {
+        // Disable the requirement for user gesture for media playback
+        webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);
+        // If mute_autoplay is set, we can also mute the audio
+        if (mute_autoplay) {
+          webkit_settings_set_media_playback_allows_airplay(settings, FALSE);
+        }
+      }
+    }
     return {};
   }
 

@@ -39,13 +39,15 @@
 #include <list>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace webview {
 namespace detail {
 
 class engine_base {
 public:
-  engine_base(bool owns_window) : m_owns_window{owns_window} {}
+  engine_base(bool owns_window, const std::string &custom_flags = "")
+      : m_owns_window{owns_window}, m_custom_flags{custom_flags} {}
 
   virtual ~engine_base() = default;
 
@@ -165,6 +167,21 @@ window.__webview__.onUnbind(" +
   }
   noresult set_frame(bool frame) { return set_frame_impl(frame); }
 
+  noresult set_browser_flags(bool enable_autoplay, bool mute_autoplay,
+                             const std::vector<std::string> &custom_flags) {
+    if (!custom_flags.empty()) {
+      std::string flags_str;
+      for (size_t i = 0; i < custom_flags.size(); ++i) {
+        if (i > 0) flags_str += ",";
+        flags_str += custom_flags[i];
+      }
+      m_custom_flags = flags_str;
+    }
+    m_enable_autoplay = enable_autoplay;
+    m_mute_autoplay = mute_autoplay;
+    return set_browser_flags_impl(enable_autoplay, mute_autoplay, custom_flags);
+  }
+
 protected:
   virtual noresult navigate_impl(const std::string &url) = 0;
   virtual result<void *> window_impl() = 0;
@@ -187,6 +204,12 @@ protected:
   virtual noresult set_click_through_impl(bool /*click_through*/) { return {}; }
   virtual noresult set_always_on_top_impl(bool /*always_on_top*/) { return {}; }
   virtual noresult set_frame_impl(bool /*frame*/) { return {}; }
+
+  virtual noresult set_browser_flags_impl(bool /*enable_autoplay*/,
+                                          bool /*mute_autoplay*/,
+                                          const std::vector<std::string> & /*custom_flags*/) {
+    return error_info{WEBVIEW_ERROR_NOT_SUPPORTED};
+  }
 
   virtual user_script *add_user_script(const std::string &js) {
     return std::addressof(*m_user_scripts.emplace(m_user_scripts.end(),
@@ -370,7 +393,7 @@ protected:
 
   bool owns_window() const { return m_owns_window; }
 
-private:
+protected:
   static std::atomic_uint &window_ref_count() {
     static std::atomic_uint ref_count{0};
     return ref_count;
@@ -393,6 +416,9 @@ private:
   bool m_is_init_script_added{};
   bool m_is_size_set{};
   bool m_owns_window{};
+  bool m_enable_autoplay{};
+  bool m_mute_autoplay{};
+  std::string m_custom_flags{};
   static const int m_initial_width = 640;
   static const int m_initial_height = 480;
 };

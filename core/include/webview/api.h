@@ -60,6 +60,16 @@ extern "C" {
 WEBVIEW_API webview_t webview_create(int debug, void *window);
 
 /**
+ * Creates a new webview instance with custom browser flags.
+ *
+ * @param debug Enable developer tools if supported by the backend.
+ * @param window Optional native window handle.
+ * @param custom_flags Custom browser flags as comma-separated string.
+ * @return @c NULL on failure.
+ */
+WEBVIEW_API webview_t webview_create_with_flags(int debug, void *window, const char *custom_flags);
+
+/**
  * Destroys a webview instance and closes the native window.
  *
  * @param w The webview instance.
@@ -292,6 +302,23 @@ WEBVIEW_API webview_error_t webview_set_always_on_top(webview_t w,
  * @param frame Whether the window should have a frame.
  */
 WEBVIEW_API webview_error_t webview_set_frame(webview_t w, int frame);
+
+/**
+ * Sets browser configuration flags for the webview.
+ *
+ * This function allows configuring browser-specific settings like autoplay,
+ * custom browser flags, etc. Not all flags are supported on all platforms.
+ *
+ * @param w The webview instance.
+ * @param enable_autoplay Enable autoplay for audio/video without user gesture.
+ * @param mute_autoplay Mute audio by default when autoplay is enabled.
+ * @param custom_flags Custom browser flags as comma-separated string.
+ * @retval WEBVIEW_ERROR_NOT_SUPPORTED If the operation is not supported.
+ */
+WEBVIEW_API webview_error_t webview_set_browser_flags(webview_t w,
+                                                       int enable_autoplay,
+                                                       int mute_autoplay,
+                                                       const char *custom_flags);
 
 /**
  * Get the library's version information.

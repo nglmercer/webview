@@ -102,6 +102,21 @@ WEBVIEW_API webview_t webview_create(int debug, void *wnd) {
   return nullptr;
 }
 
+WEBVIEW_API webview_t webview_create_with_flags(int debug, void *wnd, const char *custom_flags) {
+  using namespace webview::detail;
+  webview::webview *w{};
+  std::string flags = custom_flags ? custom_flags : "";
+  auto err = api_filter(
+      [=]() -> webview::result<webview::webview *> {
+        return new webview::webview{static_cast<bool>(debug), wnd, flags};
+      },
+      [&](webview::webview *w_) { w = w_; });
+  if (err == WEBVIEW_ERROR_OK) {
+    return w;
+  }
+  return nullptr;
+}
+
 WEBVIEW_API webview_error_t webview_destroy(webview_t w) {
   using namespace webview::detail;
   return api_filter([=]() -> webview::noresult {
@@ -286,6 +301,34 @@ WEBVIEW_API webview_error_t webview_set_frame(webview_t w, int frame) {
   using namespace webview::detail;
   return api_filter(
       [=] { return cast_to_webview(w)->set_frame(static_cast<bool>(frame)); });
+}
+
+WEBVIEW_API webview_error_t webview_set_browser_flags(webview_t w,
+                                                       int enable_autoplay,
+                                                       int mute_autoplay,
+                                                       const char *custom_flags) {
+  using namespace webview::detail;
+  if (!w) {
+    return WEBVIEW_ERROR_INVALID_ARGUMENT;
+  }
+  std::vector<std::string> flags;
+  if (custom_flags && custom_flags[0] != '\0') {
+    std::string flags_str(custom_flags);
+    size_t start = 0;
+    size_t end = flags_str.find(',');
+    while (end != std::string::npos) {
+      flags.push_back(flags_str.substr(start, end - start));
+      start = end + 1;
+      end = flags_str.find(',', start);
+    }
+    flags.push_back(flags_str.substr(start));
+  }
+  return api_filter([=] {
+    return cast_to_webview(w)->set_browser_flags(
+        static_cast<bool>(enable_autoplay),
+        static_cast<bool>(mute_autoplay),
+        flags);
+  });
 }
 
 WEBVIEW_API const webview_version_info_t *webview_version(void) {

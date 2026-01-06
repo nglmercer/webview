@@ -29,3 +29,4 @@ extern void webview_set_pixel_transparency(webview_t w, int transparent);
 extern void webview_set_click_through(webview_t w, int click_through);
 extern void webview_set_always_on_top(webview_t w, int always_on_top);
 extern void webview_set_frame(webview_t w, int frame);
+extern void webview_set_browser_flags(webview_t w, int enable_autoplay, int mute_autoplay, const char *custom_flags);

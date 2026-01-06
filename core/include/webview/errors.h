@@ -59,7 +59,9 @@ typedef enum {
   /// Signifies that something already exists.
   WEBVIEW_ERROR_DUPLICATE = 1,
   /// Signifies that something does not exist.
-  WEBVIEW_ERROR_NOT_FOUND = 2
+  WEBVIEW_ERROR_NOT_FOUND = 2,
+  /// Signifies that the operation is not supported.
+  WEBVIEW_ERROR_NOT_SUPPORTED = 3
 } webview_error_t;
 
 /// @}

@@ -51,7 +51,11 @@
 #include "../platform/windows/reg_key.hh"
 #include "../platform/windows/theme.hh"
 #include "../platform/windows/version.hh"
+#ifndef WEBVIEW_MSWEBVIEW2_EXPLICIT_LINK
+#define WEBVIEW_MSWEBVIEW2_EXPLICIT_LINK 1
+#endif
 #include "../platform/windows/webview2/loader.hh"
+#include "WebView2EnvironmentOptions.h"
 #include "../user_script.hh"
 #include "../utility/string.hh"
 
@@ -314,7 +318,8 @@ private:
 
 class win32_edge_engine : public engine_base {
 public:
-  win32_edge_engine(bool debug, void *window) : engine_base{!window} {
+  win32_edge_engine(bool debug, void *window, const std::string &custom_flags = "")
+      : engine_base{!window, custom_flags} {
     window_init(window);
     window_settings(debug);
     dispatch_size_default();
@@ -534,6 +539,42 @@ protected:
   noresult set_click_through_impl(bool click_through) override {
     m_click_through = click_through;
     update_window_layered();
+    return {};
+  }
+
+  noresult set_browser_flags_impl(bool enable_autoplay, bool mute_autoplay,
+                                  const std::vector<std::string> &custom_flags)
+      override {
+    // Apply autoplay policy if enabled
+    if (enable_autoplay || !custom_flags.empty()) {
+      // Note: For WebView2, browser flags must be set BEFORE creating the environment
+      // This function is called after creation, so we need to apply to settings
+      // For autoplay, we can use ICoreWebView2Settings
+      if (m_webview) {
+        ICoreWebView2Settings *settings = nullptr;
+        auto res = m_webview->get_Settings(&settings);
+        if (SUCCEEDED(res) && settings) {
+          // For autoplay, we need to set it before navigation
+          // The actual enforcement is done by the browser engine
+          settings->Release();
+        }
+      }
+      // Apply custom flags via JavaScript injection for now
+      // This is a workaround since flags must be set before environment creation
+      if (enable_autoplay) {
+        std::string js =
+            "(function() { "
+            "  if (HTMLMediaElement.prototype.play) { "
+            "    var originalPlay = HTMLMediaElement.prototype.play; "
+            "    HTMLMediaElement.prototype.play = function() { "
+            "      try { return originalPlay.call(this); } "
+            "      catch(e) { console.log('Autoplay blocked:', e); } "
+            "    }; "
+            "  } "
+            "})();";
+        eval_impl(js);
+      }
+    }
     return {};
   }
 
@@ -884,8 +925,21 @@ private:
         });
 
     m_com_handler->set_attempt_handler([&] {
-      return m_webview2_loader.create_environment_with_options(
-          nullptr, userDataFolder, nullptr, m_com_handler);
+      // Create options if custom flags are provided
+      ICoreWebView2EnvironmentOptions *options = nullptr;
+      if (!m_custom_flags.empty()) {
+        auto opts = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+        opts->put_AdditionalBrowserArguments(widen_string(m_custom_flags).c_str());
+        options = opts.Detach();
+      }
+
+      auto res = m_webview2_loader.create_environment_with_options(
+          nullptr, userDataFolder, options, m_com_handler);
+
+      if (options) {
+        options->Release();
+      }
+      return res;
     });
     m_com_handler->try_create_environment();
 

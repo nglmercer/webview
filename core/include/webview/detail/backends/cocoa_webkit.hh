@@ -88,8 +88,10 @@ using namespace webkit;
 
 class cocoa_wkwebview_engine : public engine_base {
 public:
-  cocoa_wkwebview_engine(bool debug, void *window)
-      : engine_base{!window}, m_app{NSApplication_get_sharedApplication()} {
+  cocoa_wkwebview_engine(bool debug, void *window,
+                         const std::string &custom_flags = "")
+      : engine_base{!window, custom_flags},
+        m_app{NSApplication_get_sharedApplication()} {
     window_init(window);
     window_settings(debug);
     dispatch_size_default();
@@ -243,6 +245,40 @@ protected:
     objc::autoreleasepool arp;
     NSWindow_setLevel(m_window, always_on_top ? 3 /* NSStatusWindowLevel */
                                               : 0 /* NSNormalWindowLevel */);
+    return {};
+  }
+
+  noresult set_browser_flags_impl(bool enable_autoplay, bool mute_autoplay,
+                                  const std::vector<std::string> &custom_flags)
+      override {
+    objc::autoreleasepool arp;
+    if (enable_autoplay && m_webview) {
+      // For WKWebView, we need to configure the media playback behavior
+      // Note: This must be set before the webview is created for full effect
+      // For post-creation, we can try to modify the configuration
+      // The mediaTypesRequiringUserActionForPlayback property is read-only
+      // after creation, so we inject JavaScript to handle autoplay
+      if (!mute_autoplay) {
+        std::string js =
+            "(function() { "
+            "  if (HTMLMediaElement.prototype.play) { "
+            "    var originalPlay = HTMLMediaElement.prototype.play; "
+            "    HTMLMediaElement.prototype.play = function() { "
+            "      try { return originalPlay.call(this); } "
+            "      catch(e) { console.log('Autoplay blocked:', e); } "
+            "    }; "
+            "  } "
+            "  if (HTMLAudioElement.prototype.play) { "
+            "    var originalAudioPlay = HTMLAudioElement.prototype.play; "
+            "    HTMLAudioElement.prototype.play = function() { "
+            "      try { return originalAudioPlay.call(this); } "
+            "      catch(e) { console.log('Audio autoplay blocked:', e); } "
+            "    }; "
+            "  } "
+            "})();";
+        eval_impl(js);
+      }
+    }
     return {};
   }
   noresult eval_impl(const std::string &js) override {

@@ -98,10 +98,19 @@ private:
 
 class gtk_webkit_engine : public engine_base {
 public:
-  gtk_webkit_engine(bool debug, void *window, const std::string &custom_flags = "")
-      : engine_base{!window, custom_flags} {
+  gtk_webkit_engine(bool debug, void *window,
+                    const std::string &custom_flags = "")
+      : engine_base{!window, custom_flags}, m_debug{debug} {
+    // Parse flags from the custom_flags string if they aren't already set
+    if (m_custom_flags.find("--enable-autoplay") != std::string::npos) {
+      m_enable_autoplay = true;
+    }
+    if (m_custom_flags.find("--mute-autoplay") != std::string::npos) {
+      m_mute_autoplay = true;
+    }
+
     window_init(window);
-    window_settings(debug);
+    window_settings();
     dispatch_size_default();
   }
 
@@ -287,21 +296,59 @@ protected:
     return {};
   }
 
-  noresult set_browser_flags_impl(bool enable_autoplay, bool mute_autoplay,
-                                  const std::vector<std::string> &custom_flags)
-      override {
-    if (enable_autoplay && m_webview) {
-      WebKitSettings *settings =
-          webkit_web_view_get_settings(WEBKIT_WEB_VIEW(m_webview));
-      if (settings) {
-        // Disable the requirement for user gesture for media playback
-        webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);
-        // If mute_autoplay is set, we can also mute the audio
-        if (mute_autoplay) {
-          webkit_settings_set_media_playback_allows_airplay(settings, FALSE);
+  noresult set_browser_flags_impl(
+      bool enable_autoplay, bool mute_autoplay,
+      const std::vector<std::string> &custom_flags) override {
+    if (!m_webview) {
+      return {};
+    }
+
+    WebKitSettings *settings =
+        webkit_web_view_get_settings(WEBKIT_WEB_VIEW(m_webview));
+    if (!settings) {
+      return {};
+    }
+
+    (void)mute_autoplay;
+
+    // Apply boolean flags
+    if (enable_autoplay) {
+      webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);
+      webkit_settings_set_media_playback_allows_inline(settings, TRUE);
+    } else {
+      webkit_settings_set_media_playback_requires_user_gesture(settings, TRUE);
+    }
+
+    // Apply custom flags
+    for (const auto &flag : custom_flags) {
+      if (flag == "--enable-autoplay") {
+        webkit_settings_set_media_playback_requires_user_gesture(settings,
+                                                                 FALSE);
+        webkit_settings_set_media_playback_allows_inline(settings, TRUE);
+      } else if (flag == "--disable-web-security") {
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(settings),
+                                         "enable-web-security")) {
+          g_object_set(settings, "enable-web-security", FALSE, NULL);
+        }
+      } else if (flag == "--allow-file-access-from-files") {
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(settings),
+                                         "allow-file-access-from-file-urls")) {
+          g_object_set(settings, "allow-file-access-from-file-urls", TRUE,
+                       NULL);
+        }
+        if (g_object_class_find_property(
+                G_OBJECT_GET_CLASS(settings),
+                "allow-universal-access-from-file-urls")) {
+          g_object_set(settings, "allow-universal-access-from-file-urls", TRUE,
+                       NULL);
         }
       }
     }
+
+    // Modern WebKit (2.30+) uses WebsitePolicies for autoplay
+    // Note: The policy must be set during construction in window_init.
+    // We already set it there based on m_enable_autoplay.
+
     return {};
   }
 
@@ -426,7 +473,24 @@ private:
     }
     webkit_dmabuf::apply_webkit_dmabuf_workaround();
     // Initialize webview widget
-    m_webview = webkit_web_view_new();
+    GtkWidget *webview = nullptr;
+#if WEBKIT_MAJOR_VERSION > 2 ||                                                \
+    (WEBKIT_MAJOR_VERSION == 2 && WEBKIT_MINOR_VERSION >= 30)
+    // Autoplay policy must be set during WebsitePolicies construction
+    WebKitWebsitePolicies *policies = (WebKitWebsitePolicies *)g_object_new(
+        webkit_website_policies_get_type(), "autoplay",
+        m_enable_autoplay ? 0 : 2, // WEBKIT_AUTOPLAY_ALLOW=0
+        NULL);
+    // Try to create webview with policies
+    webview = (GtkWidget *)g_object_new(webkit_web_view_get_type(),
+                                        "website-policies", policies, NULL);
+    g_object_unref(policies);
+#endif
+
+    if (!webview) {
+      webview = webkit_web_view_new();
+    }
+    m_webview = webview;
     g_object_ref_sink(m_webview);
 
     // Apply transparency if it was set before webview creation
@@ -446,17 +510,25 @@ private:
     add_init_script("function(message) {\n\
   return window.webkit.messageHandlers.__webview__.postMessage(message);\n\
 }");
+
+    // Apply browser flags
+    set_browser_flags_impl(m_enable_autoplay, m_mute_autoplay,
+                           get_custom_flags_vector());
   }
 
-  void window_settings(bool debug) {
+  void window_settings() {
     WebKitSettings *settings =
         webkit_web_view_get_settings(WEBKIT_WEB_VIEW(m_webview));
     webkit_settings_set_javascript_can_access_clipboard(settings, true);
-    if (debug) {
+    if (m_debug) {
       webkit_settings_set_enable_write_console_messages_to_stdout(settings,
                                                                   true);
       webkit_settings_set_enable_developer_extras(settings, true);
     }
+
+    // Re-apply flags to settings object
+    set_browser_flags_impl(m_enable_autoplay, m_mute_autoplay,
+                           get_custom_flags_vector());
   }
 
   noresult window_show() {
@@ -492,12 +564,30 @@ private:
     return 1;
   }
 
+  std::vector<std::string> get_custom_flags_vector() const {
+    std::vector<std::string> flags;
+    if (m_custom_flags.empty()) {
+      return flags;
+    }
+    std::string flags_str = m_custom_flags;
+    size_t start = 0;
+    size_t end = flags_str.find(',');
+    while (end != std::string::npos) {
+      flags.push_back(flags_str.substr(start, end - start));
+      start = end + 1;
+      end = flags_str.find(',', start);
+    }
+    flags.push_back(flags_str.substr(start));
+    return flags;
+  }
+
   GtkWidget *m_window{};
   GtkWidget *m_webview{};
   WebKitUserContentManager *m_user_content_manager{};
   bool m_stop_run_loop{};
   bool m_is_window_shown{};
   bool m_transparent{};
+  bool m_debug{};
 };
 
 } // namespace detail
